@@ -8,7 +8,7 @@ EthernetServer server(80);
 EthernetClient ethernetClient;
 
 // MQTT settings
-IPAddress broker(192,168,178,29);
+IPAddress broker(192,168,178,11);
 PubSubClient client(ethernetClient);
 
 // LED settings
@@ -26,10 +26,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
-
-  // for (int i = 0; i < length; i++) {
-  //   Serial.print(payload[i]);
-  // }
 
   if (strcmp(topic, "dioder") == 0) {
     StaticJsonBuffer<200> jsonBuffer;
