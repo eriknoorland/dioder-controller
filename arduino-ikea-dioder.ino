@@ -1,22 +1,25 @@
 #include <UIPEthernet.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <Ramp.h>
 
-// Ethernet settings
+#define PIN_RED 5
+#define PIN_GREEN 6
+#define PIN_BLUE 3
+
+#define TOPIC_PUBLISH "pc_led_debug"
+#define TOPIC_SUBSCRIBE "pc_led"
+
 byte mac[] = { 0x22, 0xCC, 0xDD, 0xEE, 0xEE, 0x02 };
 EthernetServer server(80);
 EthernetClient ethernetClient;
 
-// MQTT settings
-IPAddress broker(192, 168, 178, 15);
+IPAddress broker(192, 168, 1, 2);
 PubSubClient client(ethernetClient);
 
-bool serialDebug = true;
-
-// LED settings
-#define PIN_RED 9
-#define PIN_GREEN 6
-#define PIN_BLUE 3
+rampInt redRamp;
+rampInt greenRamp;
+rampInt blueRamp;
 
 /**
  * MQTT callback
@@ -25,26 +28,17 @@ bool serialDebug = true;
  * @param {uint} length
  */
 void callback(char* topic, byte* payload, unsigned int length) {
-  if (serialDebug) {
-    Serial.print("Message arrived [");
-    Serial.print(topic);
-    Serial.print("] ");
-  }
-
-  if (strcmp(topic, "pc_led") == 0) {
-    StaticJsonBuffer<200> jsonBuffer;
+  if (strcmp(topic, TOPIC_SUBSCRIBE) == 0) {
+    const size_t capacity = JSON_ARRAY_SIZE(3) + JSON_OBJECT_SIZE(1) + 20;
+    DynamicJsonBuffer jsonBuffer(capacity);
     JsonObject& root = jsonBuffer.parseObject(payload);
     JsonArray& colour = root["colour"];
 
-    analogWrite(PIN_RED, colour[0]);
-    analogWrite(PIN_GREEN, colour[1]);
-    analogWrite(PIN_BLUE, colour[2]);
+    redRamp.go(colour[0], 500, LINEAR, ONCEFORWARD);
+    greenRamp.go(colour[1], 500, LINEAR, ONCEFORWARD);
+    blueRamp.go(colour[2], 500, LINEAR, ONCEFORWARD);
 
-    client.publish("pc_led_debug", "Message received!");
-  }
-
-  if (serialDebug) {
-    Serial.println();
+    client.publish(TOPIC_PUBLISH, "Message received!");
   }
 }
 
@@ -53,25 +47,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
  */
 void reconnect() {
   while (!client.connected()) {
-    if (serialDebug) {
-      Serial.print("Attempting MQTT connection...");
-    }
-
-    if (client.connect("pc_led")) {
-      if (serialDebug) {
-        Serial.println("connected");
-      }
-
-      client.publish("pc_led_debug", "Connected!");
-      client.subscribe("pc_led");
+    if (client.connect(TOPIC_SUBSCRIBE)) {
+      client.publish(TOPIC_PUBLISH, "Connected!");
+      client.subscribe(TOPIC_SUBSCRIBE);
     } else {
-
-      if (serialDebug) {
-        Serial.print("failed, rc=");
-        Serial.print(client.state());
-        Serial.println(" try again in 5 seconds");
-      }
-
       delay(5000);
     }
   }
@@ -81,10 +60,6 @@ void reconnect() {
  * Setup
  */
 void setup() {
-  if (serialDebug) {
-    Serial.begin(9600);
-  }
-
   pinMode(PIN_RED, OUTPUT);
   pinMode(PIN_GREEN, OUTPUT);
   pinMode(PIN_BLUE, OUTPUT);
@@ -94,11 +69,6 @@ void setup() {
 
   Ethernet.begin(mac);
   server.begin();
-
-  if (serialDebug) {
-    Serial.print("IP Address: ");
-    Serial.println(Ethernet.localIP());
-  }
 }
 
 /**
@@ -109,7 +79,20 @@ void loop() {
 
   if (!client.connected()) {
     reconnect();
+    return;
   }
 
   client.loop();
+
+  if (redRamp.isRunning()) {
+    analogWrite(PIN_RED, redRamp.update());
+  }
+
+  if (greenRamp.isRunning()) {
+    analogWrite(PIN_GREEN, greenRamp.update());
+  }
+
+  if (blueRamp.isRunning()) {
+    analogWrite(PIN_BLUE, blueRamp.update());
+  }
 }
